@@ -9,6 +9,13 @@ import rateLimit from 'express-rate-limit';
 
 import authRouter from './routes/auth.route.js';
 import userRouter from './routes/user.route.js';
+import workspaceRouter from './routes/workspace.route.js';
+import articleRouter from './routes/article.route.js';
+import articleVersionRouter from './routes/articleVersion.route.js';
+import commentRouter from './routes/comment.route.js';
+import tagRouter from './routes/tag.route.js';
+import approvalRouter from './routes/approval.route.js';
+import notificationRouter from './routes/notification.route.js';
 
 const app: Application = express()
 
@@ -28,6 +35,13 @@ app.use(limiter);
 
 app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
+app.use('/api/workspaces', workspaceRouter);
+app.use('/api/workspaces/:workspaceId/articles', articleRouter);
+app.use('/api/workspaces/:workspaceId/articles', articleVersionRouter);
+app.use('/api/workspaces/:workspaceId/articles', commentRouter);
+app.use('/api/workspaces/:workspaceId/articles', approvalRouter);
+app.use('/api/workspaces/:workspaceId/tags', tagRouter);
+app.use('/api/notifications', notificationRouter);
 
 app.get('/health', (req: Request, res: Response) => {
     return res.status(200).json({
