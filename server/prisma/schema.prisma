@@ -1,0 +1,285 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////
+
+enum GlobalRole {
+  SUPER_ADMIN
+  ADMIN
+  USER
+}
+
+enum WorkspaceRole {
+  OWNER
+  EDITOR
+  VIEWER
+  REVIEWER
+}
+
+enum ArticleStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  COMMENT
+  APPROVAL
+  MENTION
+}
+
+//////////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////////
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  password      String
+  avatar        String?
+  globalRole    GlobalRole @default(USER)
+
+  isActive      Boolean  @default(true)
+  lastLogin     DateTime?
+
+  // Relations
+  workspaces        WorkspaceMember[]
+  articles          Article[]              @relation("ArticleAuthor")
+  comments          Comment[]
+  approvals         Approval[]
+  notifications     Notification[]
+
+  createdWorkspaces Workspace[]            @relation("WorkspaceCreator")
+  editedArticles    Article[]              @relation("LastEditor")
+  editedVersions    ArticleVersion[]
+  createdTags       Tag[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////
+// WORKSPACE
+//////////////////////////////////////////////////////
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  createdById String
+
+  createdBy   User     @relation("WorkspaceCreator", fields: [createdById], references: [id])
+
+  isArchived  Boolean  @default(false)
+
+  members     WorkspaceMember[]
+  articles    Article[]
+  tags        Tag[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}
+
+//////////////////////////////////////////////////////
+// WORKSPACE MEMBER (RBAC)
+//////////////////////////////////////////////////////
+
+model WorkspaceMember {
+  id          String        @id @default(uuid())
+  workspaceId String
+  userId      String
+
+  role        WorkspaceRole
+  joinedAt    DateTime      @default(now())
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+}
+
+//////////////////////////////////////////////////////
+// ARTICLE
+//////////////////////////////////////////////////////
+
+model Article {
+  id             String        @id @default(uuid())
+
+  workspaceId    String
+  authorId       String
+
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author         User          @relation("ArticleAuthor", fields: [authorId], references: [id])
+
+  title          String
+  slug           String
+  currentVersion Int           @default(1)
+
+  status         ArticleStatus @default(DRAFT)
+
+  isArchived     Boolean       @default(false)
+  viewCount      Int           @default(0)
+
+  lastEditedAt   DateTime?
+  lastEditedById String?
+  lastEditedBy   User?         @relation("LastEditor", fields: [lastEditedById], references: [id])
+
+  versions       ArticleVersion[]
+  comments       Comment[]
+  approvals      Approval[]
+  articleTags    ArticleTag[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([slug, workspaceId])
+  @@index([workspaceId])
+  @@index([status])
+}
+
+//////////////////////////////////////////////////////
+// ARTICLE VERSION
+//////////////////////////////////////////////////////
+
+model ArticleVersion {
+  id            String   @id @default(uuid())
+
+  articleId     String
+  editedById    String
+
+  article       Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editedBy      User     @relation(fields: [editedById], references: [id])
+
+  versionNumber Int
+  title         String
+  content       String
+
+  changeSummary String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([articleId, versionNumber])
+}
+
+//////////////////////////////////////////////////////
+// COMMENT (THREADED)
+//////////////////////////////////////////////////////
+
+model Comment {
+  id              String   @id @default(uuid())
+
+  articleId       String
+  authorId        String
+
+  article         Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author          User     @relation(fields: [authorId], references: [id])
+
+  content         String
+
+  parentCommentId String?
+  parentComment   Comment? @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies         Comment[] @relation("CommentReplies")
+
+  isEdited        Boolean  @default(false)
+  isDeleted       Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([articleId])
+  @@index([parentCommentId])
+}
+
+//////////////////////////////////////////////////////
+// TAG
+//////////////////////////////////////////////////////
+
+model Tag {
+  id           String   @id @default(uuid())
+
+  name         String
+  workspaceId  String
+  createdById  String
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation(fields: [createdById], references: [id])
+
+  articleTags  ArticleTag[]
+
+  createdAt    DateTime @default(now())
+
+  @@unique([name, workspaceId])
+}
+
+//////////////////////////////////////////////////////
+// ARTICLE <-> TAG (MANY TO MANY)
+//////////////////////////////////////////////////////
+
+model ArticleTag {
+  id        String   @id @default(uuid())
+  articleId String
+  tagId     String
+
+  article   Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, tagId])
+}
+
+//////////////////////////////////////////////////////
+// APPROVAL
+//////////////////////////////////////////////////////
+
+model Approval {
+  id         String         @id @default(uuid())
+
+  articleId  String
+  reviewerId String
+
+  article    Article        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reviewer   User           @relation(fields: [reviewerId], references: [id])
+
+  status     ApprovalStatus @default(PENDING)
+  feedback   String?
+  reviewedAt DateTime?
+
+  createdAt  DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// NOTIFICATION
+//////////////////////////////////////////////////////
+
+model Notification {
+  id          String            @id @default(uuid())
+
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type        NotificationType
+  referenceId String?
+
+  isRead      Boolean           @default(false)
+
+  createdAt   DateTime          @default(now())
+
+  @@index([userId])
+}
